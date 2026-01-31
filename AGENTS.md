@@ -1,22 +1,7 @@
-# AGENTS SSOT (must follow)
+## Codex運用ルール（Build役）
 
-## Core pipeline
-GOAL.md (human) -> SPEC.md (claude, spec only, format fixed) -> implementation (codex) -> GATE_REPORT.md (scripts) -> AUDIT.md (auditor) -> redo or next task
-
-## Non-negotiables
-- SPEC.md is the ONLY spec source of truth for implementation.
-- Claude must NOT implement code. Claude outputs ONLY SPEC.md.
-- Codex must NOT change SPEC.md. Codex changes code only.
-- If gate fails, do not merge. Fix by looping.
-
-## SPEC.md fixed headings (DO NOT CHANGE)
-1. Scope
-2. Acceptance Criteria
-3. Interfaces
-4. Error Handling
-5. Security/Safety Constraints
-6. Test Plan
-
-## Output discipline
-- Every change must be explained by an Acceptance Criteria item.
-- Keep diffs minimal. Avoid drive-by refactors.
+- Codexは「実装・テスト・コミット」まで担当する。
+- Codexは `tasks/<id>/SPEC.md` を編集しない（編集したら即FAIL）。
+- Codexは `git push` を実行しない（ネットワーク/DNS差異で不安定なため）。
+- `git push` は人間が WSL bash（/mnt/c/work/agent-pipeline）から実行する。
+- Codexが生成した `tasks/<id>/GATE_REPORT.md` / `AUDIT.md` が未追跡で邪魔なら、push前に人間が削除する（必要なら別タスクで自動化）。
