@@ -7,8 +7,17 @@ if [[ -z "$TASK_DIR" ]]; then
   exit 2
 fi
 
+if [[ ! -d "$TASK_DIR" ]]; then
+  echo "error: task dir not found: $TASK_DIR" >&2
+  exit 2
+fi
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "error: not a git repository" >&2
+  exit 2
+fi
+
 REPORT="$TASK_DIR/GATE_REPORT.md"
-mkdir -p "$TASK_DIR"
 
 fail=0
 
@@ -36,6 +45,30 @@ date >> "$REPORT"
 write ""
 run_section "Repo: git status --porcelain" git status --porcelain
 run_section "Repo: git diff --stat" git --no-pager diff --stat
+
+# ---- SSOT check ----
+ssot_files=()
+while IFS= read -r path; do
+  [[ -n "$path" ]] && ssot_files+=("$path")
+done < <(git diff --name-only HEAD -- "$TASK_DIR/SPEC.md" "$TASK_DIR/GOAL.md")
+
+if (( ${#ssot_files[@]} > 0 )); then
+  fail=1
+  write "## SSOT Violation"
+  write "FAILの理由: SSOT 違反"
+  write "以下の禁止ファイルが変更されています:"
+  for path in "${ssot_files[@]}"; do
+    write "- $path"
+  done
+  write ""
+  write "## Action Required"
+  write "SPEC.md / GOAL.md の変更を取り消してください。"
+  write ""
+else
+  write "## SSOT Check"
+  write "SPEC.md および GOAL.md は変更されていません。"
+  write ""
+fi
 
 # ---- Node ----
 if [[ -f package.json ]]; then
