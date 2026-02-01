@@ -2,103 +2,88 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: scripts/04_audit_pack.sh tasks/<id>" >&2
-  exit 2
+  echo "usage: scripts/04_audit_pack.sh [--help] <task-dir>"
 }
 
-fail() {
-  echo "error: $*" >&2
-  exit 2
-}
-
-if [[ $# -ne 1 ]]; then
+if [[ $# -eq 1 && "${1:-}" == "--help" ]]; then
   usage
+  exit 0
+fi
+
+if [[ $# -eq 0 || $# -ge 2 ]]; then
+  usage >&2
+  exit 2
+fi
+
+if [[ "${1:-}" == --* ]]; then
+  usage >&2
+  exit 2
 fi
 
 TASK_DIR="$1"
-if [[ -z "$TASK_DIR" ]]; then
-  usage
-fi
-
 if [[ ! -d "$TASK_DIR" ]]; then
-  fail "task dir not found: $TASK_DIR"
-fi
-
-SPEC_FILE="$TASK_DIR/SPEC.md"
-if [[ ! -r "$SPEC_FILE" ]]; then
-  fail "SPEC.md not found or not readable: $SPEC_FILE"
+  echo "Error: directory not found: $TASK_DIR" >&2
+  exit 2
 fi
 
 if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-  fail "not a git repository"
+  echo "Error: not inside a git repository: $(pwd -P)" >&2
+  exit 2
 fi
 
-if [[ ! -x "scripts/03_gate.sh" ]]; then
-  fail "gate script not found or not executable: scripts/03_gate.sh"
+GOAL_FILE="$TASK_DIR/GOAL.md"
+SPEC_FILE="$TASK_DIR/SPEC.md"
+if [[ ! -f "$GOAL_FILE" ]]; then
+  echo "Error: GOAL.md not found in $TASK_DIR" >&2
+  exit 1
 fi
 
-GATE_EXIT=0
-if ./scripts/03_gate.sh "$TASK_DIR"; then
-  GATE_EXIT=0
-else
-  GATE_EXIT=$?
+if [[ ! -f "$SPEC_FILE" ]]; then
+  echo "Error: SPEC.md not found in $TASK_DIR" >&2
+  exit 1
 fi
 
-GATE_REPORT="$TASK_DIR/GATE_REPORT.md"
-if [[ ! -f "$GATE_REPORT" ]]; then
-  fail "gate report not found: $GATE_REPORT"
-fi
+TASK_ID="$(basename "$TASK_DIR")"
+TIMESTAMP="$(date -Iseconds)"
+PACK_FILE="$TASK_DIR/AUDIT_PACK.md"
 
-AUDIT_PACK="$TASK_DIR/AUDIT_PACK.md"
-: > "$AUDIT_PACK"
+stat_output="$(git --no-pager diff --stat HEAD)"
+diff_output="$(git --no-pager diff HEAD)"
 
 {
-  echo "## AUDIT PACK"
-  echo '````'
-  echo "Generated: $(date)"
-  echo "Task Dir: $TASK_DIR"
-  echo "Git Top: $(git rev-parse --show-toplevel)"
-  echo "Git HEAD: $(git rev-parse HEAD)"
-  echo "Gate Exit Code: $GATE_EXIT"
-  echo '````'
+  echo "# AUDIT_PACK: $TASK_ID"
+  echo "Generated: $TIMESTAMP"
   echo ""
-
-  echo "## SPEC (SSOT)"
-  echo '````'
+  echo "## GOAL.md"
+  cat "$GOAL_FILE"
+  echo ""
+  echo "## SPEC.md"
   cat "$SPEC_FILE"
-  echo '````'
   echo ""
-
-  echo "## GATE REPORT"
-  echo '````'
-  echo "Gate Exit Code: $GATE_EXIT"
-  cat "$GATE_REPORT"
-  echo '````'
+  echo "## GATE_REPORT.md"
+  if [[ -f "$TASK_DIR/GATE_REPORT.md" ]]; then
+    cat "$TASK_DIR/GATE_REPORT.md"
+  else
+    echo "MISSING: GATE_REPORT.md"
+  fi
   echo ""
-
-  echo "## GIT DIFF --STAT"
-  echo '````'
-  git --no-pager diff --stat
-  echo '````'
+  echo "## git diff --stat"
+  echo '```'
+  if [[ -n "$stat_output" ]]; then
+    echo "$stat_output"
+  else
+    echo "(no uncommitted changes)"
+  fi
+  echo '```'
   echo ""
+  echo "## git diff"
+  echo '```'
+  if [[ -n "$diff_output" ]]; then
+    echo "$diff_output"
+  else
+    echo "(no uncommitted changes)"
+  fi
+  echo '```'
+} > "$PACK_FILE"
 
-  echo "## GIT DIFF"
-  echo '````'
-  git --no-pager diff
-  echo '````'
-  echo ""
-
-  echo "## GIT DIFF --CACHED --STAT"
-  echo '````'
-  git --no-pager diff --cached --stat
-  echo '````'
-  echo ""
-
-  echo "## GIT DIFF --CACHED"
-  echo '````'
-  git --no-pager diff --cached
-  echo '````'
-  echo ""
-} >> "$AUDIT_PACK"
-
-echo "wrote $AUDIT_PACK"
+echo "Wrote: $PACK_FILE"
