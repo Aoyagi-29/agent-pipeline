@@ -188,9 +188,23 @@ rm -rf "$TASK_DIR"
 echo "TP-4: PASS"
 ```
 
-### TP-5: task-id 未指定 → エラー
+### TP-5: task-id 未指定 → 既存挙動どおりタスクを作成できる（エラーにしない）
 
 ```bash
-./scripts/01_new_task.sh 2>/dev/null
-[ $? -ne 0 ] && echo "TP-5: PASS" || echo "TP-5: FAIL"
-```
+# Exec: 引数なしで作成（stdout の末尾に tasks/... が出る想定）
+CREATED_DIR="$(./scripts/01_new_task.sh | tail -n 1)"
+
+# Verify: task dir が存在
+[ -d "$CREATED_DIR" ] || { echo "TP-5: FAIL (task dir not created: $CREATED_DIR)"; exit 1; }
+
+# Verify: GOAL/SPEC が空でない
+[ -s "$CREATED_DIR/GOAL.md" ] || { echo "TP-5: FAIL (GOAL.md empty/missing)"; exit 1; }
+[ -s "$CREATED_DIR/SPEC.md" ] || { echo "TP-5: FAIL (SPEC.md empty/missing)"; exit 1; }
+
+# Verify: 余計なファイルが作られていない（本タスクの目的）
+[ ! -e "$CREATED_DIR/GATE_REPORT.md" ] || { echo "TP-5: FAIL (GATE_REPORT.md should not be created)"; exit 1; }
+[ ! -e "$CREATED_DIR/AUDIT.md" ]       || { echo "TP-5: FAIL (AUDIT.md should not be created)"; exit 1; }
+
+# Cleanup
+rm -rf "$CREATED_DIR"
+echo "TP-5: PASS"
