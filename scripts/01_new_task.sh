@@ -25,8 +25,8 @@ cat > "$TASK_DIR/GOAL.md" <<'TPL'
 - Out of scope: （今回はやらないこと）
 TPL
 
-: > "$TASK_DIR/SPEC.md"
-: > "$TASK_DIR/GATE_REPORT.md"
-: > "$TASK_DIR/AUDIT.md"
+cat > "$TASK_DIR/SPEC.md" <<'TPL'
+# SPEC
+TPL
 
 echo "$TASK_DIR"
