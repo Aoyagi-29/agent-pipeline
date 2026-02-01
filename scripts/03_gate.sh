@@ -3,6 +3,7 @@ set -euo pipefail
 
 MODE="legacy"
 TASK_DIR=""
+REQUIRE_CLEAN_TREE=0
 
 if [[ $# -gt 2 ]]; then
   echo "Error: invalid arguments" >&2
@@ -23,8 +24,13 @@ case "${1:-}" in
     MODE="clean-only"
     TASK_DIR="${2:-}"
     ;;
+  --require-clean-tree)
+    MODE="require-clean-tree"
+    REQUIRE_CLEAN_TREE=1
+    TASK_DIR="${2:-}"
+    ;;
   --*)
-    echo "Error: invalid arguments" >&2
+    echo "Error: unknown option: ${1:-}" >&2
     exit 2
     ;;
   *)
@@ -56,6 +62,13 @@ clean_artifacts() {
       echo "Removed: $path"
     fi
   done
+}
+
+require_clean_tree() {
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "Error: working tree is not clean" >&2
+    return 1
+  fi
 }
 
 run_gate() {
@@ -191,5 +204,12 @@ case "$MODE" in
   clean-only)
     clean_artifacts
     exit 0
+    ;;
+  require-clean-tree)
+    if ! require_clean_tree; then
+      exit 1
+    fi
+    run_gate
+    exit $?
     ;;
 esac
