@@ -34,7 +34,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "=== Step 1/3: Gate (--clean) ==="
+echo "=== Step 1/3: Gate ==="
 set +e
 "${SCRIPT_DIR}/03_gate.sh" "$TASK_DIR"
 gate_exit=$?
