@@ -1,89 +1,60 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage() {
-  echo "usage: scripts/04_audit_pack.sh [--help] <task-dir>"
-}
+usage() { echo "Usage: $0 <task-dir>" >&2; }
 
-if [[ $# -eq 1 && "${1:-}" == "--help" ]]; then
+if [[ $# -ne 1 ]]; then
   usage
-  exit 0
-fi
-
-if [[ $# -eq 0 || $# -ge 2 ]]; then
-  usage >&2
-  exit 2
-fi
-
-if [[ "${1:-}" == --* ]]; then
-  usage >&2
   exit 2
 fi
 
 TASK_DIR="$1"
 if [[ ! -d "$TASK_DIR" ]]; then
-  echo "Error: directory not found: $TASK_DIR" >&2
+  echo "Error: task-dir is not a directory: $TASK_DIR" >&2
+  usage
   exit 2
 fi
 
-if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-  echo "Error: not inside a git repository: $(pwd -P)" >&2
+SPEC_PATH="$TASK_DIR/SPEC.md"
+if [[ ! -f "$SPEC_PATH" ]]; then
+  echo "Error: missing SPEC.md: $SPEC_PATH" >&2
   exit 2
 fi
 
-GOAL_FILE="$TASK_DIR/GOAL.md"
-SPEC_FILE="$TASK_DIR/SPEC.md"
-if [[ ! -f "$GOAL_FILE" ]]; then
-  echo "Error: GOAL.md not found in $TASK_DIR" >&2
-  exit 1
-fi
+OUT_PATH="$TASK_DIR/AUDIT_PACK.md"
+GATE_REPORT_PATH="$TASK_DIR/GATE_REPORT.md"
 
-if [[ ! -f "$SPEC_FILE" ]]; then
-  echo "Error: SPEC.md not found in $TASK_DIR" >&2
-  exit 1
-fi
-
-TASK_ID="$(basename "$TASK_DIR")"
-TIMESTAMP="$(date -Iseconds)"
-PACK_FILE="$TASK_DIR/AUDIT_PACK.md"
-
-stat_output="$(git --no-pager diff --stat HEAD)"
-diff_output="$(git --no-pager diff HEAD)"
+NOW="$(date -Iseconds 2>/dev/null || date)"
 
 {
-  echo "# AUDIT_PACK: $TASK_ID"
-  echo "Generated: $TIMESTAMP"
-  echo ""
-  echo "## GOAL.md"
-  cat "$GOAL_FILE"
-  echo ""
-  echo "## SPEC.md"
-  cat "$SPEC_FILE"
-  echo ""
-  echo "## GATE_REPORT.md"
-  if [[ -f "$TASK_DIR/GATE_REPORT.md" ]]; then
-    cat "$TASK_DIR/GATE_REPORT.md"
+  echo "# AUDIT PACK"
+  echo
+  echo "- task_dir: $TASK_DIR"
+  echo "- generated_at: $NOW"
+  echo
+  echo "## SPEC"
+  echo
+  cat "$SPEC_PATH"
+  echo
+  echo "## GATE_REPORT"
+  echo
+  if [[ -f "$GATE_REPORT_PATH" ]]; then
+    cat "$GATE_REPORT_PATH"
   else
-    echo "MISSING: GATE_REPORT.md"
+    echo "missing"
   fi
-  echo ""
-  echo "## git diff --stat"
+  echo
+  echo "## DIFF_STAT"
+  echo
   echo '```'
-  if [[ -n "$stat_output" ]]; then
-    echo "$stat_output"
-  else
-    echo "(no uncommitted changes)"
-  fi
+  git diff --stat HEAD~1..HEAD || true
   echo '```'
-  echo ""
-  echo "## git diff"
+  echo
+  echo "## DIFF"
+  echo
   echo '```'
-  if [[ -n "$diff_output" ]]; then
-    echo "$diff_output"
-  else
-    echo "(no uncommitted changes)"
-  fi
+  git diff HEAD~1..HEAD || true
   echo '```'
-} > "$PACK_FILE"
+} > "$OUT_PATH"
 
-echo "Wrote: $PACK_FILE"
+echo "Wrote: $OUT_PATH"
