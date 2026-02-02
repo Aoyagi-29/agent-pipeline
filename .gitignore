@@ -1,3 +1,7 @@
 
 # audit pack (generated)
 /tasks/**/AUDIT_PACK.md
+
+# gate artifacts
+/tasks/**/GATE_REPORT.md
+/tasks/**/AUDIT.md
