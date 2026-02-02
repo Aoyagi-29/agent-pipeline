@@ -193,6 +193,12 @@ case "$MODE" in
     ;;
   clean)
     gate_exit=0
+    clean_status="$(git status --porcelain)"
+    if [[ -n "$clean_status" ]]; then
+      echo "Error: working tree is not clean (--clean requires a clean working tree)" >&2
+      echo "$clean_status" >&2
+      exit 2
+    fi
     if run_gate; then
       gate_exit=0
     else
