@@ -11,6 +11,23 @@ from .prompts import (
     ingredient_extract_prompt, normalize_prompt
 )
 from .score import finalize_and_validate
+import os
+
+# 観測フラグ：OBS=1 のときだけ [obs] を出す
+OBS = os.getenv("OBS", "") == "1"
+
+def _obs(msg: str) -> None:
+    if OBS:
+        print(msg)
+
+def _fail_job(db, job_id: int, message: str) -> None:
+    """失敗で収束させる（運用観測をDBに残す）。"""
+    payload = {"message": message, "traceback": None}
+    try:
+        db.set_error(job_id, "JOB_FAILED", payload)
+    except TypeError:
+        # 署名差分の保険。ここで落として succeeded に行かないことを優先する
+        raise RuntimeError(message)
 
 
 def run_one_job(db: SupabaseDB, s: Settings, job: Dict[str, Any]) -> None:
@@ -60,7 +77,10 @@ def run_one_job(db: SupabaseDB, s: Settings, job: Dict[str, Any]) -> None:
             last_err = None
             for attempt in range(1, 3):  # 1..2
                 try:
+                    _obs("[obs] before llm.json_call")
                     out = llm.json_call(sys, user)
+                    _obs("[obs] after llm.json_call")
+
                     out2 = finalize_and_validate(out, SCORE_RESULT_SCHEMA)
                     db.update_job(job_id, {"scoring_result": out2, "error_detail": None, "error_code": None})
                     job["scoring_result"] = out2
@@ -78,6 +98,27 @@ def run_one_job(db: SupabaseDB, s: Settings, job: Dict[str, Any]) -> None:
                     )
             if last_err is not None:
                 raise last_err
+
+
+            # --- 恒久ガード（succeeded の条件） ---
+
+            # 必須成果物が無いのに succeeded に収束する経路を遮断する。
+
+            # raise ではなく set_error に収束させ、DB観測で原因が読める形に寄せる。
+
+            if not job.get("scoring_result"):
+
+                _fail_job(
+
+                    db,
+
+                    job_id,
+
+                    "scoring_result is missing (LLM step was skipped or result was not persisted)",
+
+                )
+
+                return
 
         db.set_done(job_id)
 
