@@ -59,6 +59,9 @@ class SupabaseDB:
             return v
         
         patch = {k: _strip_openai_envelope(v) for k, v in patch.items()}
+        # None を落とす実装がどこかにあっても、ここで収束させる
+        # running_at / lease_expires_at は明示的NULLを通す
+        patch = {k: v for k, v in patch.items() if (v is not None) or (k in ("running_at","lease_expires_at"))}
         
         import os
         debug = os.getenv("DEBUG_SUPABASE") == "1"
@@ -82,7 +85,7 @@ class SupabaseDB:
         )
 
     def set_done(self, job_id: str) -> None:
-        self.update_job(job_id, {"status": "succeeded"})
+        self.update_job(job_id, {"status": "succeeded", "running_at": None, "lease_expires_at": None})
 
     def set_error(self, job_id: str, code: str, detail: Dict[str, Any]) -> None:
         # NOTE: DB側 status が check constraint で制限されている想定。
