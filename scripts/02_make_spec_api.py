@@ -18,6 +18,7 @@ PROMPT_HEADER = """あなたは仕様策定者です。GOAL.md を読み取り�
 - 見出しはこの順序で固定: Scope / Acceptance Criteria / Interfaces / Error Handling / Security/Safety Constraints / Test Plan
 - 各見出しには具体的かつ検証可能な内容を書く
 - 余計な説明や挨拶は書かない
+- SELF_CONTEXT.md が与えられた場合は、そこにある現状ファイル/直近ログを根拠に改善項目を具体化する
 """
 
 
@@ -35,6 +36,37 @@ def read_goal(task_dir: pathlib.Path) -> str:
     except OSError as exc:
         fail(f"failed to read GOAL.md: {exc}")
     return ""
+
+
+def read_self_context(task_dir: pathlib.Path) -> str:
+    ctx = task_dir / "SELF_CONTEXT.md"
+    if not ctx.is_file():
+        return ""
+    try:
+        return ctx.read_text(encoding="utf-8")
+    except OSError as exc:
+        fail(f"failed to read SELF_CONTEXT.md: {exc}")
+    return ""
+
+
+def build_user_prompt(goal_text: str, self_context_text: str) -> str:
+    parts = [
+        PROMPT_HEADER.strip(),
+        "",
+        "GOAL.md:",
+        "```",
+        goal_text,
+        "```",
+    ]
+    if self_context_text.strip():
+        parts += [
+            "",
+            "SELF_CONTEXT.md:",
+            "```",
+            self_context_text,
+            "```",
+        ]
+    return "\n".join(parts)
 
 
 def unwrap_spec_text(payload: dict) -> str:
@@ -58,7 +90,7 @@ def unwrap_spec_text(payload: dict) -> str:
     return out
 
 
-def call_claude(goal_text: str, model: str, endpoint: str, timeout: int) -> str:
+def call_claude(goal_text: str, self_context_text: str, model: str, endpoint: str, timeout: int) -> str:
     mock_spec = os.getenv("CLAUDE_API_MOCK_SPEC", "").strip()
     mock_spec_path = os.getenv("CLAUDE_API_MOCK_SPEC_PATH", "").strip()
     if mock_spec:
@@ -83,9 +115,7 @@ def call_claude(goal_text: str, model: str, endpoint: str, timeout: int) -> str:
         "messages": [
             {
                 "role": "user",
-                "content": (
-                    f"{PROMPT_HEADER}\n\nGOAL.md:\n```\n{goal_text}\n```"
-                ),
+                "content": build_user_prompt(goal_text=goal_text, self_context_text=self_context_text),
             }
         ],
     }
@@ -153,7 +183,14 @@ def main() -> int:
     endpoint = os.getenv("CLAUDE_API_ENDPOINT", DEFAULT_ENDPOINT).strip() or DEFAULT_ENDPOINT
 
     goal_text = read_goal(task_dir)
-    spec_text = call_claude(goal_text=goal_text, model=model, endpoint=endpoint, timeout=args.timeout)
+    self_context_text = read_self_context(task_dir)
+    spec_text = call_claude(
+        goal_text=goal_text,
+        self_context_text=self_context_text,
+        model=model,
+        endpoint=endpoint,
+        timeout=args.timeout,
+    )
     write_spec(task_dir=task_dir, spec_text=spec_text)
     print(f"Wrote: {task_dir / 'SPEC.md'}")
     return 0

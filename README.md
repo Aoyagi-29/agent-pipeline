@@ -27,3 +27,7 @@ ls -la scripts
 # 改善タスクを作ってそのまま auto 実行
 ./scripts/07_self_improve.sh --run-auto
 ```
+
+## Claude Planning Context
+`--auto` 実行時は `scripts/02_build_self_context.sh` が `tasks/<id>/SELF_CONTEXT.md` を生成し、
+`GOAL.md` と合わせて Claude に渡して `SPEC.md` を作成します。

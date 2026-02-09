@@ -72,6 +72,14 @@ fi
 
 echo "=== Auto A/3: Plan (Claude API) ==="
 set +e
+"${SCRIPT_DIR}/02_build_self_context.sh" "$TASK_DIR"
+context_exit=$?
+set -e
+if [[ $context_exit -ne 0 ]]; then
+  echo "Warning: failed to build SELF_CONTEXT.md (exit=$context_exit); planning with GOAL.md only" >&2
+fi
+
+set +e
 python3 "${SCRIPT_DIR}/02_make_spec_api.py" "$TASK_DIR"
 plan_exit=$?
 set -e
