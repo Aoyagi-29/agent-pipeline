@@ -34,7 +34,13 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "=== 00_run_task: $TASK_DIR ==="
+set +e
 "${SCRIPT_DIR}/05_run_audit.sh" "$TASK_DIR"
 exit_code=$?
-echo "=== 00_run_task: done (exit=$exit_code) ==="
-exit "$exit_code"
+set -e
+if [[ $exit_code -ne 0 ]]; then
+  echo "Error: run_audit failed (exit=$exit_code)" >&2
+  exit "$exit_code"
+fi
+echo "=== 00_run_task: done ==="
+exit 0

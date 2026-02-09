@@ -34,16 +34,14 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "=== Step 1/3: Gate ==="
+echo "=== Step 1/3: Gate (--clean) ==="
 set +e
-"${SCRIPT_DIR}/03_gate.sh" "$TASK_DIR"
+"${SCRIPT_DIR}/03_gate.sh" --clean "$TASK_DIR"
 gate_exit=$?
 set -e
-
-# exit=2 は運用違反（dirty/usage等）として即停止
-if [[ $gate_exit -eq 2 ]]; then
+if [[ $gate_exit -ne 0 ]]; then
   echo "Error: gate failed (exit=$gate_exit)" >&2
-  exit 2
+  exit "$gate_exit"
 fi
 
 echo "=== Step 2/3: Audit Pack ==="
@@ -59,5 +57,4 @@ fi
 echo "=== Step 3/3: Working Tree Status ==="
 git status --porcelain
 
-# Gateの結果（0=PASS, 1=FAIL）を最終結果として返す
-exit "$gate_exit"
+exit 0
