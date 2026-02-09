@@ -17,4 +17,13 @@ Human（目的だけ） → ClaudeCLI（仕様固定） → CodexCLI（実装）
 cd /mnt/c/work/agent-pipeline
 ls -la tasks
 ls -la scripts
+```
 
+## Self Improve
+```bash
+# 改善タスクだけ作る
+./scripts/07_self_improve.sh
+
+# 改善タスクを作ってそのまま auto 実行
+./scripts/07_self_improve.sh --run-auto
+```
