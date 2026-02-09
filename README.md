@@ -31,3 +31,9 @@ ls -la scripts
 ## Claude Planning Context
 `--auto` 実行時は `scripts/02_build_self_context.sh` が `tasks/<id>/SELF_CONTEXT.md` を生成し、
 `GOAL.md` と合わせて Claude に渡して `SPEC.md` を作成します。
+
+`--auto` の実行順:
+1. Plan (`SELF_CONTEXT.md` 生成 + Claudeで `SPEC.md`)
+2. Implement (`scripts/05_codex_implement.sh`)
+3. Build/Run (`scripts/06_build_run_codex.sh`)
+4. Gate + AuditPack

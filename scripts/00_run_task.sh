@@ -5,7 +5,7 @@ usage() {
   echo "Usage: 00_run_task.sh [--auto] <task-dir>"
   echo ""
   echo "Default mode: run Gate → AuditPack → Status."
-  echo "Auto mode (--auto): Plan(Claude API) → Build/Run(Codex) → Gate → AuditPack."
+  echo "Auto mode (--auto): Plan(Claude API) → Implement(Codex) → Build/Run → Gate → AuditPack."
   echo ""
   echo "Example:"
   echo "  ./scripts/00_run_task.sh tasks/2026-02-02-0337-0001"
@@ -70,7 +70,7 @@ if [[ -z "${CLAUDE_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
   load_env_file_if_present "${ROOT_DIR}/.env"
 fi
 
-echo "=== Auto A/3: Plan (Claude API) ==="
+echo "=== Auto A/4: Plan (Claude API) ==="
 set +e
 "${SCRIPT_DIR}/02_build_self_context.sh" "$TASK_DIR"
 context_exit=$?
@@ -88,7 +88,17 @@ if [[ $plan_exit -ne 0 ]]; then
   exit 2
 fi
 
-echo "=== Auto B/3: Build/Run (Codex) ==="
+echo "=== Auto B/4: Implement (Codex) ==="
+set +e
+"${SCRIPT_DIR}/05_codex_implement.sh" "$TASK_DIR"
+implement_exit=$?
+set -e
+if [[ $implement_exit -ne 0 ]]; then
+  echo "Error: implement failed (exit=$implement_exit)" >&2
+  exit 2
+fi
+
+echo "=== Auto C/4: Build/Run ==="
 set +e
 "${SCRIPT_DIR}/06_build_run_codex.sh" "$TASK_DIR"
 build_exit=$?
@@ -98,7 +108,7 @@ if [[ $build_exit -eq 2 ]]; then
   exit 2
 fi
 
-echo "=== Auto C/3: Gate + AuditPack ==="
+echo "=== Auto D/4: Gate + AuditPack ==="
 set +e
 "${SCRIPT_DIR}/03_gate.sh" "$TASK_DIR"
 gate_exit=$?
