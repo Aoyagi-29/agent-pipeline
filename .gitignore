@@ -5,3 +5,4 @@
 # gate artifacts
 /tasks/**/GATE_REPORT.md
 /tasks/**/AUDIT.md
+/tasks/**/BUILD_REPORT.md
