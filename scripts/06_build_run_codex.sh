@@ -103,6 +103,14 @@ append_report_block() {
   } >> "$BUILD_REPORT"
 }
 
+detect_build_profile() {
+  if [[ -f "$TARGET_REPO/palcome/worker.py" && -f "$TARGET_REPO/palcome/tools/observe_jobs.py" ]]; then
+    echo "palcome"
+    return
+  fi
+  echo "generic"
+}
+
 run_cmd() {
   local title="$1"
   shift
@@ -209,18 +217,25 @@ try_fix_step() {
   echo "- task_dir: $TASK_DIR"
   echo "- target_repo: $TARGET_REPO"
   echo "- max_iterations: $MAX_ITERATIONS"
+  BUILD_PROFILE="$(detect_build_profile)"
+  echo "- build_profile: $BUILD_PROFILE"
   echo "- generated_at: $(date -Iseconds 2>/dev/null || date)"
   echo
 } > "$BUILD_REPORT"
 
-if [[ ! -f "$TARGET_REPO/palcome/tools/observe_jobs.py" ]]; then
-  {
-    echo "## Precheck"
-    echo "- observe_jobs missing: $TARGET_REPO/palcome/tools/observe_jobs.py"
-    echo "- expected command: python -m palcome.tools.observe_jobs --limit 5"
-    echo
-  } >> "$BUILD_REPORT"
-fi
+{
+  echo "## Precheck"
+  if [[ "$BUILD_PROFILE" == "palcome" ]]; then
+    echo "- mode: palcome worker + observe_jobs"
+    echo "- command: python -m palcome.worker --once"
+    echo "- command: python -m palcome.tools.observe_jobs --limit 5"
+  else
+    echo "- mode: generic repository checks"
+    echo "- command: bash -n scripts/*.sh (if scripts exist)"
+    echo "- command: python -m compileall -q . (if Python project files exist)"
+  fi
+  echo
+} >> "$BUILD_REPORT"
 
 converged=0
 for ((i=1; i<=MAX_ITERATIONS; i++)); do
@@ -236,18 +251,43 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     echo >> "$BUILD_REPORT"
   fi
 
-  run_cmd "python -m palcome.worker --once" python -m palcome.worker --once || true
+  if [[ "$BUILD_PROFILE" == "palcome" ]]; then
+    run_cmd "python -m palcome.worker --once" python -m palcome.worker --once || true
 
-  obs_out="$(mktemp)"
-  (cd "$TARGET_REPO" && python -m palcome.tools.observe_jobs --limit 5) >"$obs_out" 2>&1 || true
-  append_report_block "python -m palcome.tools.observe_jobs --limit 5" "$obs_out"
+    obs_out="$(mktemp)"
+    (cd "$TARGET_REPO" && python -m palcome.tools.observe_jobs --limit 5) >"$obs_out" 2>&1 || true
+    append_report_block "python -m palcome.tools.observe_jobs --limit 5" "$obs_out"
 
-  if observe_and_check "$obs_out"; then
-    converged=1
+    if observe_and_check "$obs_out"; then
+      converged=1
+      rm -f "$obs_out"
+      break
+    fi
     rm -f "$obs_out"
-    break
+  else
+    iter_ok=1
+    ran_any_check=0
+
+    if [[ -d "$TARGET_REPO/scripts" ]]; then
+      ran_any_check=1
+      run_cmd "bash -n scripts/*.sh" bash -lc 'shopt -s nullglob; files=(scripts/*.sh); if (( ${#files[@]} == 0 )); then echo "(skip) no scripts/*.sh"; exit 0; fi; bash -n "${files[@]}"' || iter_ok=0
+    fi
+
+    if [[ -f "$TARGET_REPO/pyproject.toml" || -f "$TARGET_REPO/requirements.txt" ]]; then
+      ran_any_check=1
+      run_cmd "python -m compileall -q ." python -m compileall -q . || iter_ok=0
+    fi
+
+    if [[ "$ran_any_check" -eq 0 ]]; then
+      run_cmd "git status --porcelain" git status --porcelain || iter_ok=0
+    fi
+
+    if [[ "$iter_ok" -eq 1 ]]; then
+      converged=1
+      break
+    fi
   fi
-  rm -f "$obs_out"
+
   try_fix_step "$i"
 done
 
