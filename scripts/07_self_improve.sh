@@ -54,6 +54,16 @@ fi
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TASKS_DIR="$ROOT_DIR/tasks"
 
+has_pattern() {
+  local pattern="$1"
+  local file="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q "$pattern" "$file"
+  else
+    grep -Eq "$pattern" "$file"
+  fi
+}
+
 if [[ ! -d "$TASKS_DIR" ]]; then
   echo "Error: tasks directory not found: $TASKS_DIR" >&2
   exit 2
@@ -84,19 +94,19 @@ for task in "${recent_tasks[@]}"; do
 
   build_report="$task/BUILD_REPORT.md"
   if [[ -f "$build_report" ]]; then
-    if rg -q "CLAUDE_API_KEY is required|ANTHROPIC_API_KEY is required" "$build_report"; then
+    if has_pattern "CLAUDE_API_KEY is required|ANTHROPIC_API_KEY is required" "$build_report"; then
       need_env_fallback=1
       signals+=("Plan fails on missing API key in $(basename "$task")")
     fi
-    if rg -q "No module named 'palcome'|observe_jobs missing" "$build_report"; then
+    if has_pattern "No module named 'palcome'|observe_jobs missing" "$build_report"; then
       need_generic_profile=1
       signals+=("Build step assumes palcome in $(basename "$task")")
     fi
-    if rg -q "pytest not found, skipped" "$build_report"; then
+    if has_pattern "pytest not found, skipped" "$build_report"; then
       need_test_bootstrap=1
       signals+=("pytest unavailable in $(basename "$task")")
     fi
-    if rg -q "python: command not found|/usr/bin/python: No such file|No module named pip" "$build_report"; then
+    if has_pattern "python: command not found|/usr/bin/python: No such file|No module named pip" "$build_report"; then
       need_python_runtime=1
       signals+=("Python runtime/setup issue in $(basename "$task")")
     fi
@@ -175,4 +185,3 @@ echo "TARGET_REPO: $latest_target_repo"
 if [[ "$RUN_AUTO" -eq 1 ]]; then
   "$ROOT_DIR/scripts/00_run_task.sh" --auto "$new_task"
 fi
-
