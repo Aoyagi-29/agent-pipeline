@@ -39,6 +39,17 @@ if [[ ! -d "$TASK_DIR" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+load_env_file_if_present() {
+  local env_file="$1"
+  if [[ -f "$env_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
+  fi
+}
 
 echo "=== 00_run_task: $TASK_DIR ==="
 
@@ -53,6 +64,10 @@ if [[ "$MODE" == "default" ]]; then
   fi
   echo "=== 00_run_task: done ==="
   exit 0
+fi
+
+if [[ -z "${CLAUDE_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
+  load_env_file_if_present "${ROOT_DIR}/.env"
 fi
 
 echo "=== Auto A/3: Plan (Claude API) ==="

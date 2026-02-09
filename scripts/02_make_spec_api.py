@@ -70,9 +70,12 @@ def call_claude(goal_text: str, model: str, endpoint: str, timeout: int) -> str:
         except OSError as exc:
             fail(f"failed to read CLAUDE_API_MOCK_SPEC_PATH: {exc}")
 
-    api_key = os.getenv("CLAUDE_API_KEY", "").strip()
+    api_key = (
+        os.getenv("CLAUDE_API_KEY", "").strip()
+        or os.getenv("ANTHROPIC_API_KEY", "").strip()
+    )
     if not api_key:
-        fail("CLAUDE_API_KEY is required")
+        fail("CLAUDE_API_KEY or ANTHROPIC_API_KEY is required")
 
     body = {
         "model": model,
