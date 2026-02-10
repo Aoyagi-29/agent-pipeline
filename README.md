@@ -35,6 +35,23 @@ ls -la scripts
 `CLAUDE_PLAN_MODE=cli|api` で強制切り替えできます。
 Codex 実装はデフォルトで `OPENAI_API_KEY` を無視します。必要なら `CODEX_ALLOW_API_KEY=1` を設定します。
 
+## Auto Loop
+複数回の再実行・再Planを自動化する場合は `scripts/08_auto_loop.sh` を使います。
+デフォルトは「実務で止まりにくい」上限に設定されています。
+
+```bash
+./scripts/08_auto_loop.sh tasks/<id>
+```
+
+上書き可能な環境変数:
+- `MAX_BUILD_LOOPS` (default: 3)
+- `MAX_REPLANS` (default: 2)
+- `MAX_TOTAL_RUNS` (default: 6)
+- `MAX_ENV_RETRIES` (default: 2)
+- `MAX_DIFF_FILES` (default: 50)
+- `CLAUDE_PLAN_TIMEOUT` (default: 120)
+- `CLAUDE_PLAN_MAX_CONTEXT_CHARS` (default: 4000, `0`でSELF_CONTEXTを無効化)
+
 `--auto` の実行順:
 1. Plan (`SELF_CONTEXT.md` 生成 + Claudeで `SPEC.md`)
 2. Implement (`scripts/05_codex_implement.sh`)

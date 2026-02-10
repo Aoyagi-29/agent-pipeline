@@ -151,7 +151,13 @@ def resolve_plan_mode() -> str:
     return "api"
 
 
-def call_claude_cli(goal_text: str, self_context_text: str, model: str) -> str:
+def call_claude_cli(
+    goal_text: str,
+    self_context_text: str,
+    model: str,
+    task_dir: pathlib.Path,
+    timeout: int,
+) -> str:
     if not shutil.which("claude"):
         fail("claude command not found. Install Claude CLI or set CLAUDE_PLAN_MODE=api.")
 
@@ -164,6 +170,16 @@ def call_claude_cli(goal_text: str, self_context_text: str, model: str) -> str:
     env = os.environ.copy()
     env.pop("CLAUDE_API_KEY", None)
     env.pop("ANTHROPIC_API_KEY", None)
+    original_home = pathlib.Path.home()
+    plan_home = os.getenv("CLAUDE_PLAN_HOME", "").strip()
+    if plan_home:
+        cli_home = pathlib.Path(plan_home)
+        cli_home.mkdir(parents=True, exist_ok=True)
+        auth_src = original_home / ".claude.json"
+        auth_dst = cli_home / ".claude.json"
+        if auth_src.is_file() and not auth_dst.exists():
+            shutil.copy2(auth_src, auth_dst)
+        env["HOME"] = str(cli_home)
     cmd = ["claude", "-p", user_prompt, "--system-prompt", system_prompt]
     if model:
         cmd += ["--model", model]
@@ -172,6 +188,7 @@ def call_claude_cli(goal_text: str, self_context_text: str, model: str) -> str:
         text=True,
         capture_output=True,
         env=env,
+        timeout=timeout,
     )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
@@ -206,7 +223,45 @@ def call_claude(
 
     plan_mode = resolve_plan_mode()
     if plan_mode == "cli":
-        return call_claude_cli(goal_text=goal_text, self_context_text=self_context_text, model=model)
+        max_chars_raw = os.getenv("CLAUDE_PLAN_MAX_CONTEXT_CHARS", "").strip()
+        if max_chars_raw:
+            try:
+                max_chars = int(max_chars_raw)
+            except ValueError:
+                fail("CLAUDE_PLAN_MAX_CONTEXT_CHARS must be an integer")
+        else:
+            max_chars = 4000
+        if max_chars <= 0:
+            self_context_text = ""
+        elif len(self_context_text) > max_chars:
+            self_context_text = self_context_text[:max_chars].rstrip()
+        cli_model = os.getenv("CLAUDE_MODEL", "").strip()
+        timeout_raw = os.getenv("CLAUDE_PLAN_TIMEOUT", "").strip()
+        if timeout_raw:
+            try:
+                cli_timeout = int(timeout_raw)
+            except ValueError:
+                fail("CLAUDE_PLAN_TIMEOUT must be an integer")
+        else:
+            cli_timeout = 120
+        try:
+            return call_claude_cli(
+                goal_text=goal_text,
+                self_context_text=self_context_text,
+                model=cli_model,
+                task_dir=task_dir,
+                timeout=cli_timeout,
+            )
+        except subprocess.TimeoutExpired:
+            if self_context_text.strip():
+                return call_claude_cli(
+                    goal_text=goal_text,
+                    self_context_text="",
+                    model=cli_model,
+                    task_dir=task_dir,
+                    timeout=cli_timeout,
+                )
+            fail("Claude CLI call timed out")
 
     api_key = resolve_api_key(task_dir=task_dir, root_dir=root_dir)
 

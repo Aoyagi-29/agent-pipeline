@@ -35,10 +35,10 @@ if [[ ! -d "$TARGET_REPO" ]]; then
 fi
 
 SELF_CONTEXT_PATH="$TASK_DIR/SELF_CONTEXT.md"
-MAX_FILES="${SELF_CONTEXT_MAX_FILES:-8}"
-MAX_LINES="${SELF_CONTEXT_MAX_LINES:-120}"
-MAX_REPORTS="${SELF_CONTEXT_MAX_REPORTS:-4}"
-MAX_REPORT_LINES="${SELF_CONTEXT_MAX_REPORT_LINES:-80}"
+MAX_FILES="${SELF_CONTEXT_MAX_FILES:-4}"
+MAX_LINES="${SELF_CONTEXT_MAX_LINES:-80}"
+MAX_REPORTS="${SELF_CONTEXT_MAX_REPORTS:-2}"
+MAX_REPORT_LINES="${SELF_CONTEXT_MAX_REPORT_LINES:-60}"
 
 if ! [[ "$MAX_FILES" =~ ^[0-9]+$ ]] || [[ "$MAX_FILES" -le 0 ]]; then
   echo "Error: SELF_CONTEXT_MAX_FILES must be a positive integer" >&2
@@ -102,6 +102,11 @@ append_file_snippet() {
     echo "- git_head: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
     echo "- dirty: $(if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then echo yes; else echo no; fi)"
   )
+  echo
+  echo "## Selection Criteria"
+  echo "- Prefer scripts/ (*.sh, *.py), then README/AGENTS/pyproject/package.json"
+  echo "- Include up to ${MAX_FILES} files, ${MAX_LINES} lines each"
+  echo "- Recent reports: newest tasks first, up to ${MAX_REPORTS} reports"
   echo
   echo "## Key Files"
 } > "$SELF_CONTEXT_PATH"
