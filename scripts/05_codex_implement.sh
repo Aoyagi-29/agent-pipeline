@@ -113,8 +113,40 @@ trap cleanup EXIT
 } > "$IMPLEMENT_REPORT"
 
 set +e
+# --- load repo .env for automation-only codex exec ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$REPO_ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$REPO_ROOT/.env"
+  set +a
+fi
+: "${OPENAI_BASE_URL:=https://api.openai.com/v1}"
+CODEX_ALLOW_API_KEY="${CODEX_ALLOW_API_KEY:-}"
+case "${CODEX_ALLOW_API_KEY}" in
+  1|true|TRUE|yes|YES) CODEX_ALLOW_API_KEY=1 ;;
+  *) CODEX_ALLOW_API_KEY=0 ;;
+esac
+
+# record to IMPLEMENT_REPORT (no secret value)
+{
+  echo "-- OPENAI_BASE_URL=${OPENAI_BASE_URL:-<empty>}"
+  echo "-- CODEX_ALLOW_API_KEY=${CODEX_ALLOW_API_KEY}"
+  if [[ "$CODEX_ALLOW_API_KEY" -eq 1 ]]; then
+    echo "-- OPENAI_API_KEY=${OPENAI_API_KEY:+SET}${OPENAI_API_KEY:-NOT_SET}"
+  else
+    echo "-- OPENAI_API_KEY=IGNORED"
+  fi
+} >> "$IMPLEMENT_REPORT"
+# ----------------------------------------------------
+
 if [[ -n "${CODEX_IMPLEMENT_CMD:-}" ]]; then
-  (cd "$TARGET_REPO" && bash -lc "${CODEX_IMPLEMENT_CMD}") >"$out_file" 2>&1
+  if [[ "$CODEX_ALLOW_API_KEY" -eq 1 ]]; then
+    (cd "$TARGET_REPO" && OPENAI_API_KEY="${OPENAI_API_KEY:-}" OPENAI_BASE_URL="$OPENAI_BASE_URL" bash -lc "${CODEX_IMPLEMENT_CMD}") >"$out_file" 2>&1
+  else
+    (cd "$TARGET_REPO" && env -u OPENAI_API_KEY OPENAI_BASE_URL="$OPENAI_BASE_URL" bash -lc "${CODEX_IMPLEMENT_CMD}") >"$out_file" 2>&1
+  fi
   rc=$?
 else
   if ! command -v codex >/dev/null 2>&1; then
@@ -130,7 +162,11 @@ else
     set -e
     exit 2
   fi
-  (cd "$TARGET_REPO" && codex exec --full-auto - < "$prompt_file") >"$out_file" 2>&1
+  if [[ "$CODEX_ALLOW_API_KEY" -eq 1 ]]; then
+    (cd "$TARGET_REPO" && OPENAI_API_KEY="${OPENAI_API_KEY:-}" OPENAI_BASE_URL="$OPENAI_BASE_URL" codex exec --full-auto - < "$prompt_file") >"$out_file" 2>&1
+  else
+    (cd "$TARGET_REPO" && env -u OPENAI_API_KEY OPENAI_BASE_URL="$OPENAI_BASE_URL" codex exec --full-auto - < "$prompt_file") >"$out_file" 2>&1
+  fi
   rc=$?
 fi
 set -e

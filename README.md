@@ -31,6 +31,9 @@ ls -la scripts
 ## Claude Planning Context
 `--auto` 実行時は `scripts/02_build_self_context.sh` が `tasks/<id>/SELF_CONTEXT.md` を生成し、
 `GOAL.md` と合わせて Claude に渡して `SPEC.md` を作成します。
+デフォルトは **Claude CLI を優先**し、CLI が無い場合は API を使います。
+`CLAUDE_PLAN_MODE=cli|api` で強制切り替えできます。
+Codex 実装はデフォルトで `OPENAI_API_KEY` を無視します。必要なら `CODEX_ALLOW_API_KEY=1` を設定します。
 
 `--auto` の実行順:
 1. Plan (`SELF_CONTEXT.md` 生成 + Claudeで `SPEC.md`)

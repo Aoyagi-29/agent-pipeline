@@ -6,7 +6,7 @@ usage() {
   echo "       00_run_task.sh --resume <task-dir>"
   echo ""
   echo "Default mode: run Gate -> AuditPack -> Status."
-  echo "Auto mode (--auto): Plan(Claude API) -> Implement(Codex) -> Build/Run -> Gate -> AuditPack."
+  echo "Auto mode (--auto): Plan(Claude CLI/API) -> Implement(Codex) -> Build/Run -> Gate -> AuditPack."
   echo "Resume mode (--resume): continue auto from the failed phase based on RUN_SUMMARY.md."
   echo ""
   echo "Example:"
@@ -301,7 +301,15 @@ if ! load_env_file_if_present "${ROOT_DIR}/.env"; then
   exit 2
 fi
 
-echo "=== Auto A/5: Plan (Claude API) ==="
+plan_label="Claude API"
+if [[ "${CLAUDE_PLAN_MODE:-}" == "cli" ]]; then
+  plan_label="Claude CLI"
+elif [[ "${CLAUDE_PLAN_MODE:-}" == "api" ]]; then
+  plan_label="Claude API"
+elif command -v claude >/dev/null 2>&1; then
+  plan_label="Claude CLI"
+fi
+echo "=== Auto A/5: Plan (${plan_label}) ==="
 if should_run_phase "Plan" "$start_phase"; then
   if ! require_python3; then
     summary_phase "Plan" 2 "missing python3"

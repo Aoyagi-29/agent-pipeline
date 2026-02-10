@@ -4,7 +4,9 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import socket
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -82,10 +84,11 @@ def read_self_context(task_dir: pathlib.Path) -> str:
     return ""
 
 
-def build_user_prompt(goal_text: str, self_context_text: str) -> str:
-    parts = [
-        PROMPT_HEADER.strip(),
-        "",
+def build_user_prompt(goal_text: str, self_context_text: str, include_header: bool = True) -> str:
+    parts = []
+    if include_header:
+        parts += [PROMPT_HEADER.strip(), ""]
+    parts += [
         "GOAL.md:",
         "```",
         goal_text,
@@ -139,6 +142,48 @@ def resolve_api_key(task_dir: pathlib.Path, root_dir: pathlib.Path) -> str:
     return ""
 
 
+def resolve_plan_mode() -> str:
+    raw = os.getenv("CLAUDE_PLAN_MODE", "").strip().lower()
+    if raw in {"api", "cli"}:
+        return raw
+    if shutil.which("claude"):
+        return "cli"
+    return "api"
+
+
+def call_claude_cli(goal_text: str, self_context_text: str, model: str) -> str:
+    if not shutil.which("claude"):
+        fail("claude command not found. Install Claude CLI or set CLAUDE_PLAN_MODE=api.")
+
+    system_prompt = PROMPT_HEADER.strip()
+    user_prompt = build_user_prompt(
+        goal_text=goal_text,
+        self_context_text=self_context_text,
+        include_header=False,
+    )
+    env = os.environ.copy()
+    env.pop("CLAUDE_API_KEY", None)
+    env.pop("ANTHROPIC_API_KEY", None)
+    cmd = ["claude", "-p", user_prompt, "--system-prompt", system_prompt]
+    if model:
+        cmd += ["--model", model]
+    proc = subprocess.run(
+        cmd,
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        if len(detail) > 400:
+            detail = detail[:400] + "..."
+        fail(f"Claude CLI call failed (exit={proc.returncode}): {detail}")
+    text = (proc.stdout or "").strip()
+    if not text:
+        fail("Claude CLI returned empty SPEC")
+    return text
+
+
 def call_claude(
     goal_text: str,
     self_context_text: str,
@@ -158,6 +203,10 @@ def call_claude(
             return p.read_text(encoding="utf-8")
         except OSError as exc:
             fail(f"failed to read CLAUDE_API_MOCK_SPEC_PATH: {exc}")
+
+    plan_mode = resolve_plan_mode()
+    if plan_mode == "cli":
+        return call_claude_cli(goal_text=goal_text, self_context_text=self_context_text, model=model)
 
     api_key = resolve_api_key(task_dir=task_dir, root_dir=root_dir)
 
@@ -223,7 +272,7 @@ def write_spec(task_dir: pathlib.Path, spec_text: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="02_make_spec_api.py",
-        description="Generate tasks/<id>/SPEC.md from GOAL.md via Claude API.",
+        description="Generate tasks/<id>/SPEC.md from GOAL.md via Claude CLI/API.",
     )
     parser.add_argument("task_dir")
     parser.add_argument(
