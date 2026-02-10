@@ -4,10 +4,10 @@
 **実行正本は WSL2 Ubuntu + bash**。Windows PowerShellは補助用途です。
 
 ## 役割分離（本質）
-Human（目的だけ） → ClaudeCLI（仕様固定） → CodexCLI（実装） → ChatGPT（監査/ゲート判定） → 差し戻し or 完了
+Human（目的だけ） → Codex（対話入口） → Claude（ExecPlan生成） → CodexCLI（実装） → Gate → 差し戻し or 完了
 
 ## SSOT（唯一の正）
-- 仕様のSSOT = `tasks/<task-id>/SPEC.md`
+- Plan/Decision/Progress のSSOT = `tasks/<task-id>/EXECPLAN.md`
 - 実装は SPEC.md に従う（CodexがSPECを編集したら即FAIL）
 - Gate結果 = `tasks/<task-id>/GATE_REPORT.md`
 - 監査結果 = `tasks/<task-id>/AUDIT.md`
