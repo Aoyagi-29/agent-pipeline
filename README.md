@@ -37,6 +37,10 @@ API費用を使わない場合は `CLAUDE_NO_API=1` を設定し、Claude CLIの
 このモードでは `CLAUDE_API_KEY` / `ANTHROPIC_API_KEY` が設定されていると失敗します。
 Codex 実装はデフォルトで `OPENAI_API_KEY` を無視します。必要なら `CODEX_ALLOW_API_KEY=1` を設定します。
 
+## Change Summary (ChatGPT API)
+監査用の `CHANGE_SUMMARY.md` 生成は ChatGPT API を使いますが、デフォルトで無効化されています。
+有効化する場合は `USE_CHATGPT_API=1` を設定してください。
+
 ## Auto Loop
 複数回の再実行・再Planを自動化する場合は `scripts/08_auto_loop.sh` を使います。
 デフォルトは「実務で止まりにくい」上限に設定されています。
