@@ -56,6 +56,7 @@ fi
 SPEC_PATH="$TASK_DIR/SPEC.md"
 TARGET_REPO_FILE="$TASK_DIR/TARGET_REPO"
 BUILD_REPORT="$TASK_DIR/BUILD_REPORT.md"
+PYTEST_GUIDE="$TASK_DIR/PYTEST_SETUP_GUIDE.md"
 
 if [[ ! -f "$SPEC_PATH" ]]; then
   echo "Error: SPEC.md not found in $TASK_DIR" >&2
@@ -109,6 +110,51 @@ detect_build_profile() {
     return
   fi
   echo "generic"
+}
+
+detect_python_project() {
+  if [[ -f "$TARGET_REPO/pyproject.toml" || -f "$TARGET_REPO/requirements.txt" || -f "$TARGET_REPO/setup.py" || -f "$TARGET_REPO/setup.cfg" || -f "$TARGET_REPO/Pipfile" ]]; then
+    return 0
+  fi
+  if command -v rg >/dev/null 2>&1; then
+    rg --files -g '*.py' "$TARGET_REPO" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
+detect_python_cmd() {
+  if command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+    return
+  fi
+  if command -v python >/dev/null 2>&1; then
+    echo "python"
+    return
+  fi
+  echo ""
+}
+
+write_pytest_setup_guide() {
+  local py_cmd="$1"
+  local guide_path="$2"
+  local target_hint="$3"
+  if ! cat > "$guide_path" <<EOF
+# PYTEST SETUP GUIDE
+
+This guide was generated because pytest was not detected.
+
+## Steps
+1. Identify your dependency file ($target_hint).
+2. Add \`pytest\` to your dev dependencies.
+3. Install dependencies: \`pip install pytest\` or \`pip install -e .[dev]\`.
+4. Verify: \`${py_cmd} -m pytest --version\`.
+5. Re-run: \`scripts/00_run_task.sh --auto $TASK_DIR\`.
+EOF
+  then
+    echo "Error: Cannot write pytest setup guide to $guide_path" >&2
+    return 1
+  fi
+  return 0
 }
 
 run_cmd() {
@@ -237,6 +283,62 @@ try_fix_step() {
   echo
 } >> "$BUILD_REPORT"
 
+PYTHON_CMD="$(detect_python_cmd)"
+PYTHON_PROJECT=0
+if detect_python_project; then
+  PYTHON_PROJECT=1
+fi
+
+PYTEST_FOUND=0
+PYTEST_RUN_CMD=()
+if [[ "$PYTHON_PROJECT" -eq 1 && -n "$PYTHON_CMD" ]]; then
+  if "$PYTHON_CMD" -m pytest --version >/dev/null 2>&1; then
+    PYTEST_FOUND=1
+    PYTEST_RUN_CMD=("$PYTHON_CMD" -m pytest -q)
+  fi
+fi
+
+{
+  echo "## Pytest Status"
+  if [[ "$PYTHON_PROJECT" -eq 0 ]]; then
+    echo "- (skip) pytest not applicable"
+  elif [[ -z "$PYTHON_CMD" ]]; then
+    echo "- (skip) Python not detected, skipping pytest checks"
+  elif [[ "$PYTEST_FOUND" -eq 1 ]]; then
+    echo "- found"
+    echo "- verify: $PYTHON_CMD -m pytest --version"
+  else
+    echo "- not found; install via: pip install pytest (or pip install -e .[dev])"
+    echo "- To enable tests, run: pip install pytest (or pip install -e .[dev]) then re-run 00_run_task.sh --auto"
+    echo "- Pytest still not found; verify install: $PYTHON_CMD -m pytest --version"
+    target_hint="pyproject.toml or requirements.txt"
+    if [[ -f "$TARGET_REPO/pyproject.toml" ]]; then
+      target_hint="pyproject.toml"
+    elif [[ -f "$TARGET_REPO/requirements.txt" ]]; then
+      target_hint="requirements.txt"
+    elif [[ -f "$TARGET_REPO/setup.py" || -f "$TARGET_REPO/setup.cfg" ]]; then
+      target_hint="setup.py/setup.cfg"
+    elif [[ -f "$TARGET_REPO/Pipfile" ]]; then
+      target_hint="Pipfile"
+    fi
+    if ! write_pytest_setup_guide "$PYTHON_CMD" "$PYTEST_GUIDE" "$target_hint"; then
+      echo "- note: failed to write pytest setup guide at $PYTEST_GUIDE"
+    else
+      echo "- guide: $PYTEST_GUIDE"
+    fi
+  fi
+  echo
+} >> "$BUILD_REPORT"
+
+if [[ "$PYTHON_PROJECT" -eq 1 ]]; then
+  if [[ -z "$PYTHON_CMD" ]]; then
+    echo "WARN: Python not detected, skipping pytest checks" >&2
+  elif [[ "$PYTEST_FOUND" -eq 0 ]]; then
+    echo "WARN: pytest not available. Install via: pip install pytest (or pip install -e .[dev])" >&2
+    echo "WARN: To enable tests, run: pip install pytest (or pip install -e .[dev]) then re-run 00_run_task.sh --auto" >&2
+  fi
+fi
+
 converged=0
 for ((i=1; i<=MAX_ITERATIONS; i++)); do
   {
@@ -244,9 +346,9 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     echo
   } >> "$BUILD_REPORT"
 
-  if command -v pytest >/dev/null 2>&1; then
-    run_cmd "pytest -q" pytest -q || true
-  else
+  if [[ "$PYTHON_PROJECT" -eq 1 && "$PYTEST_FOUND" -eq 1 ]]; then
+    run_cmd "pytest -q" "${PYTEST_RUN_CMD[@]}" || true
+  elif [[ "$PYTHON_PROJECT" -eq 1 ]]; then
     echo "- pytest not found, skipped" >> "$BUILD_REPORT"
     echo >> "$BUILD_REPORT"
   fi

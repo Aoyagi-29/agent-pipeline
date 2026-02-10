@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -25,6 +26,37 @@ PROMPT_HEADER = """あなたは仕様策定者です。GOAL.md を読み取り�
 def fail(msg: str) -> None:
     print(f"Error: {msg}", file=sys.stderr)
     raise SystemExit(2)
+
+
+def load_env_file(env_path: pathlib.Path) -> None:
+    if not env_path.is_file():
+        return
+    try:
+        content = env_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print("Failed to source .env file; check syntax", file=sys.stderr)
+        raise SystemExit(2) from exc
+    try:
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export ") :].lstrip()
+            if "=" not in line:
+                raise ValueError("missing '='")
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+                raise ValueError("invalid key")
+            if value and value[0] in {"'", '"'} and value[-1:] == value[:1]:
+                value = value[1:-1]
+            if not os.getenv(key):
+                os.environ[key] = value
+    except Exception as exc:
+        print("Failed to source .env file; check syntax", file=sys.stderr)
+        raise SystemExit(2) from exc
 
 
 def read_goal(task_dir: pathlib.Path) -> str:
@@ -90,7 +122,28 @@ def unwrap_spec_text(payload: dict) -> str:
     return out
 
 
-def call_claude(goal_text: str, self_context_text: str, model: str, endpoint: str, timeout: int) -> str:
+def resolve_api_key(task_dir: pathlib.Path, root_dir: pathlib.Path) -> str:
+    load_env_file(task_dir / ".env")
+    load_env_file(root_dir / ".env")
+    for key_name in ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        value = os.getenv(key_name, "").strip()
+        if value:
+            return value
+    fail(
+        "API key not found. Set CLAUDE_API_KEY or ANTHROPIC_API_KEY, or create .env file with ANTHROPIC_API_KEY=sk-..."
+    )
+    return ""
+
+
+def call_claude(
+    goal_text: str,
+    self_context_text: str,
+    model: str,
+    endpoint: str,
+    timeout: int,
+    task_dir: pathlib.Path,
+    root_dir: pathlib.Path,
+) -> str:
     mock_spec = os.getenv("CLAUDE_API_MOCK_SPEC", "").strip()
     mock_spec_path = os.getenv("CLAUDE_API_MOCK_SPEC_PATH", "").strip()
     if mock_spec:
@@ -102,12 +155,7 @@ def call_claude(goal_text: str, self_context_text: str, model: str, endpoint: st
         except OSError as exc:
             fail(f"failed to read CLAUDE_API_MOCK_SPEC_PATH: {exc}")
 
-    api_key = (
-        os.getenv("CLAUDE_API_KEY", "").strip()
-        or os.getenv("ANTHROPIC_API_KEY", "").strip()
-    )
-    if not api_key:
-        fail("CLAUDE_API_KEY or ANTHROPIC_API_KEY is required")
+    api_key = resolve_api_key(task_dir=task_dir, root_dir=root_dir)
 
     body = {
         "model": model,
@@ -134,9 +182,9 @@ def call_claude(goal_text: str, self_context_text: str, model: str, endpoint: st
             raw = res.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        fail(f"Claude API HTTP {exc.code}: {detail[:400]}")
+        fail(f"Claude API call failed: HTTP {exc.code}: {detail[:400]}")
     except urllib.error.URLError as exc:
-        fail(f"Claude API connection failed: {exc.reason}")
+        fail(f"Claude API call failed: {exc.reason}")
     except Exception as exc:
         fail(f"Claude API call failed: {exc}")
 
@@ -181,6 +229,7 @@ def main() -> int:
 
     model = os.getenv("CLAUDE_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     endpoint = os.getenv("CLAUDE_API_ENDPOINT", DEFAULT_ENDPOINT).strip() or DEFAULT_ENDPOINT
+    root_dir = pathlib.Path(__file__).resolve().parent.parent
 
     goal_text = read_goal(task_dir)
     self_context_text = read_self_context(task_dir)
@@ -190,6 +239,8 @@ def main() -> int:
         model=model,
         endpoint=endpoint,
         timeout=args.timeout,
+        task_dir=task_dir,
+        root_dir=root_dir,
     )
     write_spec(task_dir=task_dir, spec_text=spec_text)
     print(f"Wrote: {task_dir / 'SPEC.md'}")
