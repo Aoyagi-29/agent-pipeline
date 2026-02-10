@@ -180,6 +180,24 @@ set -e
 } >> "$IMPLEMENT_REPORT"
 
 if [[ "$rc" -ne 0 ]]; then
+  if rg -q "Missing scopes: api\\.responses\\.write" "$out_file" >/dev/null 2>&1; then
+    {
+      echo "### Codex Auth Hint"
+      echo "- Detected 401 Unauthorized with missing scope: api.responses.write."
+      echo "- This indicates the current Codex auth lacks required API scopes."
+      if [[ "$CODEX_ALLOW_API_KEY" -eq 1 ]]; then
+        echo "- Check that OPENAI_API_KEY has the responses.write scope and proper org/project role."
+      else
+        echo "- Options:"
+        echo "  - Re-authenticate: run \`codex logout\` then \`codex login\` to refresh ChatGPT auth."
+        echo "  - Or set \`CODEX_ALLOW_API_KEY=1\` and provide a properly scoped OPENAI_API_KEY."
+      fi
+      echo
+    } >> "$IMPLEMENT_REPORT"
+  fi
+fi
+
+if [[ "$rc" -ne 0 ]]; then
   exit "$rc"
 fi
 exit 0
