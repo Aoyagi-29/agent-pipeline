@@ -33,6 +33,8 @@ ls -la scripts
 `GOAL.md` と合わせて Claude に渡して `SPEC.md` を作成します。
 デフォルトは **Claude CLI を優先**し、CLI が無い場合は API を使います。
 `CLAUDE_PLAN_MODE=cli|api` で強制切り替えできます。
+API費用を使わない場合は `CLAUDE_NO_API=1` を設定し、Claude CLIのみで実行します。
+このモードでは `CLAUDE_API_KEY` / `ANTHROPIC_API_KEY` が設定されていると失敗します。
 Codex 実装はデフォルトで `OPENAI_API_KEY` を無視します。必要なら `CODEX_ALLOW_API_KEY=1` を設定します。
 
 ## Auto Loop

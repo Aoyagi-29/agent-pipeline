@@ -146,6 +146,10 @@ def resolve_plan_mode() -> str:
     raw = os.getenv("CLAUDE_PLAN_MODE", "").strip().lower()
     if raw in {"api", "cli"}:
         return raw
+    if os.getenv("CLAUDE_NO_API", "").strip():
+        if shutil.which("claude"):
+            return "cli"
+        fail("CLAUDE_NO_API is set but claude command not found. Install Claude CLI.")
     if shutil.which("claude"):
         return "cli"
     return "api"
@@ -223,6 +227,9 @@ def call_claude(
 
     plan_mode = resolve_plan_mode()
     if plan_mode == "cli":
+        if os.getenv("CLAUDE_NO_API", "").strip():
+            if os.getenv("CLAUDE_API_KEY", "").strip() or os.getenv("ANTHROPIC_API_KEY", "").strip():
+                fail("CLAUDE_NO_API is set. Unset CLAUDE_API_KEY/ANTHROPIC_API_KEY to avoid API usage.")
         max_chars_raw = os.getenv("CLAUDE_PLAN_MAX_CONTEXT_CHARS", "").strip()
         if max_chars_raw:
             try:
