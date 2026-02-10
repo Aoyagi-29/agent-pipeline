@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import re
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -34,7 +35,7 @@ def load_env_file(env_path: pathlib.Path) -> None:
     try:
         content = env_path.read_text(encoding="utf-8")
     except OSError as exc:
-        print("Failed to source .env file; check syntax", file=sys.stderr)
+        print(f"Failed to source .env file; check syntax: {env_path}", file=sys.stderr)
         raise SystemExit(2) from exc
     try:
         for raw_line in content.splitlines():
@@ -55,7 +56,7 @@ def load_env_file(env_path: pathlib.Path) -> None:
             if not os.getenv(key):
                 os.environ[key] = value
     except Exception as exc:
-        print("Failed to source .env file; check syntax", file=sys.stderr)
+        print(f"Failed to source .env file; check syntax: {env_path}", file=sys.stderr)
         raise SystemExit(2) from exc
 
 
@@ -123,14 +124,17 @@ def unwrap_spec_text(payload: dict) -> str:
 
 
 def resolve_api_key(task_dir: pathlib.Path, root_dir: pathlib.Path) -> str:
-    load_env_file(task_dir / ".env")
-    load_env_file(root_dir / ".env")
-    for key_name in ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+    task_env = task_dir / ".env"
+    root_env = root_dir / ".env"
+    load_env_file(task_env)
+    load_env_file(root_env)
+    for key_name in ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY"):
         value = os.getenv(key_name, "").strip()
         if value:
             return value
     fail(
-        "API key not found. Set CLAUDE_API_KEY or ANTHROPIC_API_KEY, or create .env file with ANTHROPIC_API_KEY=sk-..."
+        "CLAUDE_API_KEY is required (or set ANTHROPIC_API_KEY). Looked in environment, "
+        f"{task_env}, {root_env}. Example: ANTHROPIC_API_KEY=sk-ant-..."
     )
     return ""
 
@@ -181,10 +185,17 @@ def call_claude(
         with urllib.request.urlopen(req, timeout=timeout) as res:
             raw = res.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            fail("API authentication failed. Check API key validity.")
         detail = exc.read().decode("utf-8", errors="replace")
         fail(f"Claude API call failed: HTTP {exc.code}: {detail[:400]}")
     except urllib.error.URLError as exc:
-        fail(f"Claude API call failed: {exc.reason}")
+        reason = exc.reason
+        if isinstance(reason, socket.timeout) or "timed out" in str(reason).lower():
+            fail("API request timeout. Check network connection.")
+        fail(f"Claude API call failed: {reason}")
+    except socket.timeout:
+        fail("API request timeout. Check network connection.")
     except Exception as exc:
         fail(f"Claude API call failed: {exc}")
 

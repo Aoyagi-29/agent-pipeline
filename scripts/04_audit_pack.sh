@@ -32,6 +32,8 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   exit 2
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 GOAL_PATH="$TASK_DIR/GOAL.md"
 SPEC_PATH="$TASK_DIR/SPEC.md"
 if [[ ! -f "$GOAL_PATH" ]]; then
@@ -45,9 +47,37 @@ fi
 
 OUT_PATH="$TASK_DIR/AUDIT_PACK.md"
 GATE_REPORT_PATH="$TASK_DIR/GATE_REPORT.md"
+BUILD_REPORT_PATH="$TASK_DIR/BUILD_REPORT.md"
+CHANGE_SUMMARY_PATH="$TASK_DIR/CHANGE_SUMMARY.md"
+CHANGE_SUMMARY_SCRIPT="$SCRIPT_DIR/04_generate_change_summary.py"
 TASK_ID="$(basename "$TASK_DIR")"
 
 NOW="$(date -Iseconds 2>/dev/null || date)"
+
+summary_status=0
+summary_output=""
+if [[ -f "$CHANGE_SUMMARY_SCRIPT" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    set +e
+    summary_output="$(python3 "$CHANGE_SUMMARY_SCRIPT" "$TASK_DIR" 2>&1)"
+    summary_status=$?
+    set -e
+  else
+    summary_status=2
+    summary_output="Missing: python3 (required to run $CHANGE_SUMMARY_SCRIPT)"
+  fi
+else
+  summary_status=2
+  summary_output="Missing: $CHANGE_SUMMARY_SCRIPT"
+fi
+{
+  if [[ $summary_status -eq 0 ]]; then
+    printf "%s\n" "$summary_output"
+  else
+    echo "Error: change summary generation failed (exit=$summary_status)"
+    printf "%s\n" "$summary_output"
+  fi
+} > "$CHANGE_SUMMARY_PATH"
 
 {
   echo "# AUDIT_PACK: $TASK_ID"
@@ -68,6 +98,22 @@ NOW="$(date -Iseconds 2>/dev/null || date)"
     cat "$GATE_REPORT_PATH"
   else
     echo "MISSING: GATE_REPORT.md"
+  fi
+  echo
+  echo "## BUILD_REPORT.md"
+  echo
+  if [[ -f "$BUILD_REPORT_PATH" ]]; then
+    cat "$BUILD_REPORT_PATH"
+  else
+    echo "MISSING: BUILD_REPORT.md"
+  fi
+  echo
+  echo "## CHANGE_SUMMARY.md"
+  echo
+  if [[ -f "$CHANGE_SUMMARY_PATH" ]]; then
+    cat "$CHANGE_SUMMARY_PATH"
+  else
+    echo "MISSING: CHANGE_SUMMARY.md"
   fi
   echo
   echo "## git diff --stat"

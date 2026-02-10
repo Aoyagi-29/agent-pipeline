@@ -98,8 +98,6 @@ run_gate() {
   write "## Timestamp"
   date >> "$REPORT"
   write ""
-  run_section "Repo: git status --porcelain" git status --porcelain
-  run_section "Repo: git diff --stat" git --no-pager diff --stat
 
   # ---- SSOT check ----
   ssot_files=()
@@ -107,23 +105,54 @@ run_gate() {
     [[ -n "$path" ]] && ssot_files+=("$path")
   done < <(git diff --name-only HEAD -- "$TASK_DIR/SPEC.md" "$TASK_DIR/GOAL.md")
 
-  if (( ${#ssot_files[@]} > 0 )); then
-    fail=1
+  snapshot_path="$TASK_DIR/.SSOT_SNAPSHOT"
+  snapshot_mismatch=0
+  if [[ -f "$snapshot_path" ]]; then
+    if command -v rg >/dev/null 2>&1; then
+      expected_goal="$(rg -n '^GOAL\.md ' "$snapshot_path" 2>/dev/null | awk '{print $2}')"
+      expected_spec="$(rg -n '^SPEC\.md ' "$snapshot_path" 2>/dev/null | awk '{print $2}')"
+    else
+      expected_goal="$(grep -E '^GOAL\.md ' "$snapshot_path" 2>/dev/null | awk '{print $2}')"
+      expected_spec="$(grep -E '^SPEC\.md ' "$snapshot_path" 2>/dev/null | awk '{print $2}')"
+    fi
+    if [[ -n "$expected_goal" && -f "$TASK_DIR/GOAL.md" ]]; then
+      current_goal="$(sha256sum "$TASK_DIR/GOAL.md" | awk '{print $1}')"
+      if [[ "$current_goal" != "$expected_goal" ]]; then
+        snapshot_mismatch=1
+      fi
+    fi
+    if [[ -n "$expected_spec" && -f "$TASK_DIR/SPEC.md" ]]; then
+      current_spec="$(sha256sum "$TASK_DIR/SPEC.md" | awk '{print $1}')"
+      if [[ "$current_spec" != "$expected_spec" ]]; then
+        snapshot_mismatch=1
+      fi
+    fi
+  fi
+
+  if (( ${#ssot_files[@]} > 0 )) || [[ "$snapshot_mismatch" -eq 1 ]]; then
     write "## SSOT Violation"
-    write "FAILの理由: SSOT 違反"
-    write "以下の禁止ファイルが変更されています:"
+    write "FAIL: SPEC.md and GOAL.md are read-only SSOT artifacts. Revert changes or regenerate before task execution."
+    write ""
+    if [[ "$snapshot_mismatch" -eq 1 ]]; then
+      write "Detected mismatch against .SSOT_SNAPSHOT (files changed after Plan)."
+      write ""
+    fi
+    write "Changed files:"
     for path in "${ssot_files[@]}"; do
       write "- $path"
     done
     write ""
     write "## Action Required"
-    write "SPEC.md / GOAL.md の変更を取り消してください。"
+    write "Run: git checkout HEAD -- tasks/<id>/SPEC.md tasks/<id>/GOAL.md (if tracked)"
+    write "Or delete $TASK_DIR/.SSOT_SNAPSHOT and regenerate SPEC.md via Plan."
     write ""
-  else
-    write "## SSOT Check"
-    write "SPEC.md および GOAL.md は変更されていません。"
-    write ""
+    write "## Result"
+    write "- FAIL (SSOT violation detected)"
+    return 1
   fi
+
+  run_section "Repo: git status --porcelain" git status --porcelain
+  run_section "Repo: git diff --stat" git --no-pager diff --stat
 
   # ---- Node ----
   if [[ -f package.json ]]; then
