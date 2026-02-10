@@ -2,12 +2,13 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: scripts/06_build_run_codex.sh [--max-iterations N] <task-dir>"
-  echo "Example: scripts/06_build_run_codex.sh --max-iterations 5 tasks/2026-02-09-0001"
+  echo "Usage: scripts/06_build_run_codex.sh [--max_iters N] <task-dir>"
+  echo "Example: scripts/06_build_run_codex.sh --max_iters 5 tasks/2026-02-09-0001"
 }
 
 MAX_ITERATIONS=5
 TASK_DIR=""
+RESET_ON_FAIL=0
 
 while [[ $# -gt 0 ]]; do
   case "${1:-}" in
@@ -15,9 +16,9 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    --max-iterations)
+    --max_iters|--max-iterations)
       if [[ $# -lt 2 ]]; then
-        echo "Error: --max-iterations requires a value" >&2
+        echo "Error: --max_iters requires a value" >&2
         exit 2
       fi
       MAX_ITERATIONS="$2"
@@ -44,7 +45,7 @@ if [[ -z "$TASK_DIR" ]]; then
 fi
 
 if ! [[ "$MAX_ITERATIONS" =~ ^[0-9]+$ ]] || [[ "$MAX_ITERATIONS" -le 0 ]]; then
-  echo "Error: --max-iterations must be a positive integer" >&2
+  echo "Error: --max_iters must be a positive integer" >&2
   exit 2
 fi
 
@@ -56,6 +57,10 @@ fi
 SPEC_PATH="$TASK_DIR/SPEC.md"
 TARGET_REPO_FILE="$TASK_DIR/TARGET_REPO"
 BUILD_REPORT="$TASK_DIR/BUILD_REPORT.md"
+RUNS_DIR="$TASK_DIR/runs"
+FIX_INPUTS_DIR="$TASK_DIR/fix_inputs"
+PATCHES_DIR="$TASK_DIR/patches"
+DECISION_LOG="$TASK_DIR/DECISION_LOG.md"
 
 if [[ ! -f "$SPEC_PATH" ]]; then
   echo "Error: SPEC.md not found in $TASK_DIR" >&2
@@ -84,6 +89,12 @@ if ! git -C "$TARGET_REPO" rev-parse --show-toplevel >/dev/null 2>&1; then
   exit 2
 fi
 
+mkdir -p "$RUNS_DIR" "$FIX_INPUTS_DIR" "$PATCHES_DIR"
+
+if [[ "${SELF_HEAL_RESET_ON_FAIL:-0}" == "1" ]]; then
+  RESET_ON_FAIL=1
+fi
+
 sanitize_output() {
   sed -E \
     -e 's/(CLAUDE_API_KEY|OPENAI_API_KEY|SUPABASE_SERVICE_ROLE_KEY|service_role|api[_-]?key)[^[:space:]]*/\1=[REDACTED]/Ig' \
@@ -101,6 +112,18 @@ append_report_block() {
     echo '```'
     echo
   } >> "$BUILD_REPORT"
+}
+
+append_run_block() {
+  local title="$1"
+  local file="$2"
+  {
+    echo "### $title"
+    echo '```'
+    sanitize_output < "$file"
+    echo '```'
+    echo
+  } >> "$RUN_LOG"
 }
 
 detect_build_profile() {
@@ -165,6 +188,9 @@ run_cmd() {
   local rc=$?
   set -e
   append_report_block "$title (exit=$rc)" "$out"
+  if [[ -n "${RUN_LOG:-}" ]]; then
+    append_run_block "$title (exit=$rc)" "$out"
+  fi
   rm -f "$out"
   return "$rc"
 }
@@ -226,7 +252,10 @@ PY
 
 try_fix_step() {
   local iter="$1"
+  local ts="$2"
   local fix_cmd="${CODEX_FIX_CMD:-}"
+  local fix_input="$FIX_INPUTS_DIR/${ts}.md"
+  local patch_file="$PATCHES_DIR/${ts}.diff"
   {
     echo "### Fix Attempt (iteration=$iter)"
     if [[ -z "$fix_cmd" ]]; then
@@ -238,7 +267,7 @@ try_fix_step() {
       echo '```'
       local out
       out="$(mktemp)"
-      if (cd "$TARGET_REPO" && bash -lc "$fix_cmd") >"$out" 2>&1; then
+      if (cd "$TARGET_REPO" && CODEX_FIX_INPUT_FILE="$fix_input" bash -lc "$fix_cmd" < "$fix_input") >"$out" 2>&1; then
         echo "- result: success"
       else
         echo "- result: failed (continuing)"
@@ -250,6 +279,72 @@ try_fix_step() {
     fi
     echo
   } >> "$BUILD_REPORT"
+
+  if git -C "$TARGET_REPO" diff --quiet; then
+    echo "(no changes)" > "$patch_file"
+  else
+    git -C "$TARGET_REPO" diff > "$patch_file"
+  fi
+}
+
+write_decision_log() {
+  local iter="$1"
+  local ts="$2"
+  local result="$3"
+  local observation="$4"
+  local hypothesis="$5"
+  local change="$6"
+  local next="$7"
+  if [[ ! -f "$DECISION_LOG" ]]; then
+    {
+      echo "# DECISION_LOG"
+      echo ""
+    } > "$DECISION_LOG"
+  fi
+  {
+    echo "## Iteration ${iter} (${ts})"
+    echo ""
+    echo "- 観測: ${observation}"
+    echo "- 仮説: ${hypothesis}"
+    echo "- 修正: ${change}"
+    echo "- 結果: ${result}"
+    echo "- 次の一手: ${next}"
+    echo ""
+  } >> "$DECISION_LOG"
+}
+
+make_fix_input() {
+  local iter="$1"
+  local ts="$2"
+  local obs="$3"
+  local run_log="$4"
+  local fix_input="$FIX_INPUTS_DIR/${ts}.md"
+  {
+    echo "# Fix Request"
+    echo ""
+    echo "- task_dir: $TASK_DIR"
+    echo "- target_repo: $TARGET_REPO"
+    echo "- iteration: $iter"
+    echo "- build_profile: $BUILD_PROFILE"
+    echo ""
+    echo "## Failure Summary"
+    echo "$obs"
+    echo ""
+    echo "## Recent Run Log (tail)"
+    echo '```'
+    tail -n 200 "$run_log"
+    echo '```'
+    echo ""
+    echo "## Git Status"
+    echo '```'
+    (cd "$TARGET_REPO" && git status --porcelain)
+    echo '```'
+    echo ""
+    echo "## Git Diff (stat)"
+    echo '```'
+    (cd "$TARGET_REPO" && git diff --stat)
+    echo '```'
+  } > "$fix_input"
 }
 
 {
@@ -399,16 +494,44 @@ fi
 
 converged=0
 for ((i=1; i<=MAX_ITERATIONS; i++)); do
+  ts="$(date +%Y%m%dT%H%M%S)"
+  if [[ -e "$RUNS_DIR/$ts" || -e "$FIX_INPUTS_DIR/${ts}.md" || -e "$PATCHES_DIR/${ts}.diff" ]]; then
+    ts="${ts}_$i"
+  fi
+  RUN_DIR="$RUNS_DIR/$ts"
+  RUN_LOG="$RUN_DIR/run.log"
+  META_JSON="$RUN_DIR/meta.json"
+  mkdir -p "$RUN_DIR"
+
   {
     echo "## Iteration $i/$MAX_ITERATIONS"
     echo
   } >> "$BUILD_REPORT"
 
+  {
+    echo "# Run Log"
+    echo "- iteration: $i"
+    echo "- ts: $ts"
+    echo "- target_repo: $TARGET_REPO"
+    echo "- build_profile: $BUILD_PROFILE"
+    echo "- started_at: $(date -Iseconds 2>/dev/null || date)"
+    echo
+  } > "$RUN_LOG"
+
+  observations=()
+  hypothesis="n/a"
+  change="n/a"
+  next_step="continue"
+  result_label="FAIL"
+
   if [[ "$PYTHON_PROJECT" -eq 1 && "$PYTEST_FOUND" -eq 1 ]]; then
-    run_cmd "pytest -q" "${PYTEST_RUN_CMD[@]}" || true
+    if ! run_cmd "pytest -q" "${PYTEST_RUN_CMD[@]}"; then
+      observations+=("pytest failed")
+    fi
   elif [[ "$PYTHON_PROJECT" -eq 1 ]]; then
     echo "- pytest not found, skipped" >> "$BUILD_REPORT"
     echo >> "$BUILD_REPORT"
+    observations+=("pytest not found")
   fi
 
   iter_ok=1
@@ -416,24 +539,83 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   if [[ -d "$TARGET_REPO/scripts" ]]; then
     ran_any_check=1
-    run_cmd "bash -n scripts/*.sh" bash -lc 'shopt -s nullglob; files=(scripts/*.sh); if (( ${#files[@]} == 0 )); then echo "(skip) no scripts/*.sh"; exit 0; fi; bash -n "${files[@]}"' || iter_ok=0
+    if ! run_cmd "bash -n scripts/*.sh" bash -lc 'shopt -s nullglob; files=(scripts/*.sh); if (( ${#files[@]} == 0 )); then echo "(skip) no scripts/*.sh"; exit 0; fi; bash -n "${files[@]}"'; then
+      iter_ok=0
+      observations+=("bash -n scripts/*.sh failed")
+    fi
   fi
 
   if [[ -f "$TARGET_REPO/pyproject.toml" || -f "$TARGET_REPO/requirements.txt" ]]; then
     ran_any_check=1
-    run_cmd "$PYTHON_CMD -m compileall -q ." "$PYTHON_CMD" -m compileall -q . || iter_ok=0
+    if ! run_cmd "$PYTHON_CMD -m compileall -q ." "$PYTHON_CMD" -m compileall -q .; then
+      iter_ok=0
+      observations+=("python compileall failed")
+    fi
   fi
 
   if [[ "$ran_any_check" -eq 0 ]]; then
-    run_cmd "git status --porcelain" git status --porcelain || iter_ok=0
+    if ! run_cmd "git status --porcelain" git status --porcelain; then
+      iter_ok=0
+      observations+=("git status failed")
+    fi
   fi
 
   if [[ "$iter_ok" -eq 1 ]]; then
     converged=1
+    result_label="PASS"
+    next_step="stop (converged)"
+    observation="checks passed"
+    if (( ${#observations[@]} > 0 )); then
+      observation="$(IFS='; '; echo "${observations[*]}")"
+    fi
+    write_decision_log "$i" "$ts" "$result_label" "$observation" "n/a" "n/a" "$next_step"
+    {
+      echo "{"
+      echo "  \"iteration\": $i,"
+      echo "  \"ts\": \"${ts}\","
+      echo "  \"result\": \"${result_label}\","
+      echo "  \"build_profile\": \"${BUILD_PROFILE}\","
+      echo "  \"converged\": true"
+      echo "}"
+    } > "$META_JSON"
     break
   fi
 
-  try_fix_step "$i"
+  observation="$(IFS='; '; echo "${observations[*]:-checks failed}")"
+  hypothesis="apply automated fix via CODEX_FIX_CMD"
+  change="CODEX_FIX_CMD not set"
+  if [[ -n "${CODEX_FIX_CMD:-}" ]]; then
+    change="ran CODEX_FIX_CMD"
+  fi
+  make_fix_input "$i" "$ts" "$observation" "$RUN_LOG"
+  try_fix_step "$i" "$ts"
+
+  if git -C "$TARGET_REPO" diff --quiet; then
+    next_step="re-run checks (no code changes detected)"
+  else
+    next_step="re-run checks after applying patch"
+  fi
+
+  if ! git -C "$TARGET_REPO" diff --quiet; then
+    if [[ "$RESET_ON_FAIL" -eq 1 ]]; then
+      git -C "$TARGET_REPO" reset --hard >/dev/null 2>&1 || true
+      change="${change}; reset --hard (SELF_HEAL_RESET_ON_FAIL=1)"
+      next_step="re-run checks after reset"
+    else
+      change="${change}; rollback available via git reset --hard"
+    fi
+  fi
+
+  write_decision_log "$i" "$ts" "$result_label" "$observation" "$hypothesis" "$change" "$next_step"
+  {
+    echo "{"
+    echo "  \"iteration\": $i,"
+    echo "  \"ts\": \"${ts}\","
+    echo "  \"result\": \"${result_label}\","
+    echo "  \"build_profile\": \"${BUILD_PROFILE}\","
+    echo "  \"converged\": false"
+    echo "}"
+  } > "$META_JSON"
 done
 
 if [[ "$converged" -eq 1 ]]; then
