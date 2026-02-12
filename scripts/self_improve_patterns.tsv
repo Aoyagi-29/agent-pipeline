@@ -1,0 +1,12 @@
+# flag|pattern|message
+env_fallback|CLAUDE_API_KEY is required|Plan fails on missing API key
+env_fallback|ANTHROPIC_API_KEY is required|Plan fails on missing API key
+generic_profile|No module named 'palcome'|Build step assumes palcome
+generic_profile|observe_jobs missing|Build step assumes palcome
+test_bootstrap|pytest not found, skipped|pytest unavailable
+test_bootstrap|pytest not available|pytest unavailable
+python_runtime|python: command not found|Python runtime/setup issue
+python_runtime|/usr/bin/python: No such file|Python runtime/setup issue
+python_runtime|No module named pip|Python runtime/setup issue
+ssot_guard|SSOT Violation|SSOT violation detected
+ssot_guard|SPEC.md.*変更|SSOT violation detected

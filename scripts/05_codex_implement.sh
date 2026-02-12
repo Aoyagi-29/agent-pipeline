@@ -107,7 +107,7 @@ trap cleanup EXIT
     echo "- command: ${CODEX_IMPLEMENT_CMD}"
   else
     echo "- mode: codex exec --full-auto"
-    echo "- command: codex exec --full-auto -"
+    echo "- command: codex exec --full-auto --model ${CODEX_MODEL:-gpt-5.3-codex} -"
   fi
   echo
 } > "$IMPLEMENT_REPORT"
@@ -123,6 +123,7 @@ if [ -f "$REPO_ROOT/.env" ]; then
   set +a
 fi
 : "${OPENAI_BASE_URL:=https://api.openai.com/v1}"
+CODEX_MODEL="${CODEX_MODEL:-gpt-5.3-codex}"
 CODEX_ALLOW_API_KEY="${CODEX_ALLOW_API_KEY:-}"
 case "${CODEX_ALLOW_API_KEY}" in
   1|true|TRUE|yes|YES) CODEX_ALLOW_API_KEY=1 ;;
@@ -132,9 +133,14 @@ esac
 # record to IMPLEMENT_REPORT (no secret value)
 {
   echo "-- OPENAI_BASE_URL=${OPENAI_BASE_URL:-<empty>}"
+  echo "-- CODEX_MODEL=${CODEX_MODEL:-<empty>}"
   echo "-- CODEX_ALLOW_API_KEY=${CODEX_ALLOW_API_KEY}"
   if [[ "$CODEX_ALLOW_API_KEY" -eq 1 ]]; then
-    echo "-- OPENAI_API_KEY=${OPENAI_API_KEY:+SET}${OPENAI_API_KEY:-NOT_SET}"
+    if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+      echo "-- OPENAI_API_KEY=SET"
+    else
+      echo "-- OPENAI_API_KEY=NOT_SET"
+    fi
   else
     echo "-- OPENAI_API_KEY=IGNORED"
   fi
@@ -163,9 +169,9 @@ else
     exit 2
   fi
   if [[ "$CODEX_ALLOW_API_KEY" -eq 1 ]]; then
-    (cd "$TARGET_REPO" && OPENAI_API_KEY="${OPENAI_API_KEY:-}" OPENAI_BASE_URL="$OPENAI_BASE_URL" codex exec --full-auto - < "$prompt_file") >"$out_file" 2>&1
+    (cd "$TARGET_REPO" && OPENAI_API_KEY="${OPENAI_API_KEY:-}" OPENAI_BASE_URL="$OPENAI_BASE_URL" codex exec --full-auto --model "$CODEX_MODEL" - < "$prompt_file") >"$out_file" 2>&1
   else
-    (cd "$TARGET_REPO" && env -u OPENAI_API_KEY OPENAI_BASE_URL="$OPENAI_BASE_URL" codex exec --full-auto - < "$prompt_file") >"$out_file" 2>&1
+    (cd "$TARGET_REPO" && env -u OPENAI_API_KEY OPENAI_BASE_URL="$OPENAI_BASE_URL" codex exec --full-auto --model "$CODEX_MODEL" - < "$prompt_file") >"$out_file" 2>&1
   fi
   rc=$?
 fi
