@@ -1,0 +1,29 @@
+name: Keep Codespaces Alive
+
+on:
+  schedule:
+    - cron: '0 0 1,21 * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep all stopped Codespaces alive
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACES_PAT }}
+        run: |
+          echo "=== Codespace Keep-Alive ==="
+          CODESPACES=$(curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/user/codespaces")
+          echo "$CODESPACES" | jq -c '.codespaces[]' | while read -r cs; do
+            NAME=$(echo "$cs" | jq -r '.name')
+            STATE=$(echo "$cs" | jq -r '.state')
+            echo "Codespace: $NAME / State: $STATE"
+            if [ "$STATE" = "Shutdown" ] || [ "$STATE" = "Available" ]; then
+              curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/user/codespaces/$NAME/start"
+              sleep 15
+              curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/user/codespaces/$NAME/stop"
+              echo "Refreshed: $NAME"
+            fi
+          done
+          echo "=== Done ==="
