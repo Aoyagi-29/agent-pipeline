@@ -7,3 +7,7 @@
 /tasks/**/AUDIT.md
 /tasks/**/BUILD_REPORT.md
 .env
+
+# mobile MCP server
+/mobile/mcp-server/node_modules/
+/mobile/mcp-server/dist/

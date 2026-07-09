@@ -1,0 +1,24 @@
+{
+  "name": "mobile-adb-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Android device control via ADB",
+  "type": "module",
+  "bin": {
+    "mobile-adb-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": ["mcp", "adb", "android", "mobile"],
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}
