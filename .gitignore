@@ -7,3 +7,8 @@
 /tasks/**/AUDIT.md
 /tasks/**/BUILD_REPORT.md
 .env
+
+# Pi local session/cache (keep .pi/settings.json tracked)
+.pi/sessions/
+.pi/npm/
+.pi/git/

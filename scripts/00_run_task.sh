@@ -6,7 +6,7 @@ usage() {
   echo "       00_run_task.sh --resume <task-dir>"
   echo ""
   echo "Default mode: run Gate -> AuditPack -> Status."
-  echo "Auto mode (--auto): Plan(Claude CLI/API) -> Implement(Codex) -> Build/Run -> Gate -> AuditPack."
+  echo "Auto mode (--auto): Plan(Claude CLI/API) -> Implement(Pi/Codex) -> Build/Run -> Gate -> AuditPack."
   echo "Resume mode (--resume): continue auto from the failed phase based on RUN_SUMMARY.md."
   echo ""
   echo "Example:"
@@ -301,6 +301,26 @@ if ! load_env_file_if_present "${ROOT_DIR}/.env"; then
   exit 2
 fi
 
+# Prefer user-local Pi install
+if [[ -d "${HOME}/.local/bin" && ":$PATH:" != *":${HOME}/.local/bin:"* ]]; then
+  export PATH="${HOME}/.local/bin:$PATH"
+fi
+
+# shellcheck source=lib/agent_model.sh
+source "${SCRIPT_DIR}/lib/agent_model.sh"
+if [[ -n "${AGENT_THINKING+x}" && -n "${AGENT_THINKING:-}" ]]; then
+  AGENT_THINKING_SET=1
+fi
+agent_model_defaults
+{
+  echo ""
+  echo "## Agent Model"
+  echo "- AGENT_BACKEND=${AGENT_BACKEND}"
+  echo "- AGENT_MODEL=${AGENT_MODEL}"
+  echo "- AGENT_THINKING=${AGENT_THINKING}"
+  echo "- CODEX_MODEL=${CODEX_MODEL}"
+} >> "$SUMMARY_REPORT"
+
 plan_label="Claude API"
 if [[ "${CLAUDE_PLAN_MODE:-}" == "cli" ]]; then
   plan_label="Claude CLI"
@@ -357,7 +377,7 @@ else
   summary_skip "Plan"
 fi
 
-echo "=== Auto B/5: Implement (Codex) ==="
+echo "=== Auto B/5: Implement (Pi/Codex: ${AGENT_MODEL} / ${AGENT_THINKING}) ==="
 if should_run_phase "Implement" "$start_phase"; then
   ensure_ssot_snapshot
   set +e
