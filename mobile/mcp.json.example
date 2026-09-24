@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mobile-adb": {
+      "command": "node",
+      "args": ["${workspaceFolder}/mobile/mcp-server/dist/index.js"],
+      "env": {
+        "ADB_SERVER_SOCKET": ""
+      }
+    }
+  }
+}
